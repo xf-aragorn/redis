@@ -54,29 +54,29 @@
 #define LP_ENCODING_STRING 1
 
 #define LP_ENCODING_7BIT_UINT 0
-#define LP_ENCODING_7BIT_UINT_MASK 0x80
-#define LP_ENCODING_IS_7BIT_UINT(byte) (((byte)&LP_ENCODING_7BIT_UINT_MASK)==LP_ENCODING_7BIT_UINT)
+#define LP_ENCODING_7BIT_UINT_MASK 0x80     // 1000 0000    判断高一位是否为0
+#define LP_ENCODING_IS_7BIT_UINT(byte) (((byte)&LP_ENCODING_7BIT_UINT_MASK)==LP_ENCODING_7BIT_UINT)  //第一位是0 就是小整数，后面7位代表具体的内容
 #define LP_ENCODING_7BIT_UINT_ENTRY_SIZE 2
 
-#define LP_ENCODING_6BIT_STR 0x80
-#define LP_ENCODING_6BIT_STR_MASK 0xC0
-#define LP_ENCODING_IS_6BIT_STR(byte) (((byte)&LP_ENCODING_6BIT_STR_MASK)==LP_ENCODING_6BIT_STR)
+#define LP_ENCODING_6BIT_STR 0x80          //  1000 0000
+#define LP_ENCODING_6BIT_STR_MASK 0xC0    //  1100 0000   比较高二位
+#define LP_ENCODING_IS_6BIT_STR(byte) (((byte)&LP_ENCODING_6BIT_STR_MASK)==LP_ENCODING_6BIT_STR)     //高二位是10 ，就是总长度不超过2^6的字符串
 
 #define LP_ENCODING_13BIT_INT 0xC0
-#define LP_ENCODING_13BIT_INT_MASK 0xE0
+#define LP_ENCODING_13BIT_INT_MASK 0xE0    //  1110 0000
 #define LP_ENCODING_IS_13BIT_INT(byte) (((byte)&LP_ENCODING_13BIT_INT_MASK)==LP_ENCODING_13BIT_INT)
 #define LP_ENCODING_13BIT_INT_ENTRY_SIZE 3
 
-#define LP_ENCODING_12BIT_STR 0xE0
-#define LP_ENCODING_12BIT_STR_MASK 0xF0
+#define LP_ENCODING_12BIT_STR 0xE0          // 1110 0000
+#define LP_ENCODING_12BIT_STR_MASK 0xF0     // 1111 0000
 #define LP_ENCODING_IS_12BIT_STR(byte) (((byte)&LP_ENCODING_12BIT_STR_MASK)==LP_ENCODING_12BIT_STR)
 
-#define LP_ENCODING_16BIT_INT 0xF1
+#define LP_ENCODING_16BIT_INT 0xF1      //1111 0001
 #define LP_ENCODING_16BIT_INT_MASK 0xFF
 #define LP_ENCODING_IS_16BIT_INT(byte) (((byte)&LP_ENCODING_16BIT_INT_MASK)==LP_ENCODING_16BIT_INT)
 #define LP_ENCODING_16BIT_INT_ENTRY_SIZE 4
 
-#define LP_ENCODING_24BIT_INT 0xF2
+#define LP_ENCODING_24BIT_INT 0xF2    // 1111 0010
 #define LP_ENCODING_24BIT_INT_MASK 0xFF
 #define LP_ENCODING_IS_24BIT_INT(byte) (((byte)&LP_ENCODING_24BIT_INT_MASK)==LP_ENCODING_24BIT_INT)
 #define LP_ENCODING_24BIT_INT_ENTRY_SIZE 5
@@ -97,7 +97,7 @@
 
 #define LP_EOF 0xFF
 
-#define LP_ENCODING_6BIT_STR_LEN(p) ((p)[0] & 0x3F)
+#define LP_ENCODING_6BIT_STR_LEN(p) ((p)[0] & 0x3F)       //0011 1111     取后存储的内容的长度
 #define LP_ENCODING_12BIT_STR_LEN(p) ((((p)[0] & 0xF) << 8) | (p)[1])
 #define LP_ENCODING_32BIT_STR_LEN(p) (((uint32_t)(p)[1]<<0) | \
                                       ((uint32_t)(p)[2]<<8) | \
@@ -254,16 +254,6 @@ void lpFree(unsigned char *lp) {
     lp_free(lp);
 }
 
-/* Shrink the memory to fit. */
-unsigned char* lpShrinkToFit(unsigned char *lp) {
-    size_t size = lpGetTotalBytes(lp);
-    if (size < lp_malloc_size(lp)) {
-        return lp_realloc(lp, size);
-    } else {
-        return lp;
-    }
-}
-
 /* Stores the integer encoded representation of 'v' in the 'intenc' buffer. */
 static inline void lpEncodeIntegerGetType(int64_t v, unsigned char *intenc, uint64_t *enclen) {
     if (v >= 0 && v <= 127) {
@@ -316,6 +306,16 @@ static inline void lpEncodeIntegerGetType(int64_t v, unsigned char *intenc, uint
     }
 }
 
+/* Shrink the memory to fit. */
+unsigned char* lpShrinkToFit(unsigned char *lp) {
+    size_t size = lpGetTotalBytes(lp);
+    if (size < lp_malloc_size(lp)) {
+        return lp_realloc(lp, size);
+    } else {
+        return lp;
+    }
+}
+
 /* Given an element 'ele' of size 'size', determine if the element can be
  * represented inside the listpack encoded as integer, and returns
  * LP_ENCODING_INT if so. Otherwise returns LP_ENCODING_STR if no integer
@@ -329,10 +329,11 @@ static inline void lpEncodeIntegerGetType(int64_t v, unsigned char *intenc, uint
  * in order to be represented. */
 static inline int lpEncodeGetType(unsigned char *ele, uint32_t size, unsigned char *intenc, uint64_t *enclen) {
     int64_t v;
+    //尝试将插入的值转换位int64_t的数值，如果成功，则使用整数进行编码
     if (lpStringToInt64((const char*)ele, size, &v)) {
         lpEncodeIntegerGetType(v, intenc, enclen);
         return LP_ENCODING_INT;
-    } else {
+    } else { //否则使用字符串编码
         if (size < 64) *enclen = 1+size;
         else if (size < 4096) *enclen = 2+size;
         else *enclen = 5+(uint64_t)size;
@@ -345,6 +346,7 @@ static inline int lpEncodeGetType(unsigned char *ele, uint32_t size, unsigned ch
  * The function returns the number of bytes used to encode it, from
  * 1 to 5. If 'buf' is NULL the function just returns the number of bytes
  * needed in order to encode the backlen. */
+//获取插入元素的总长度编码
 static inline unsigned long lpEncodeBacklen(unsigned char *buf, uint64_t l) {
     if (l <= 127) {
         if (buf) buf[0] = l;
@@ -428,13 +430,13 @@ static inline void lpEncodeString(unsigned char *buf, unsigned char *s, uint32_t
  * a return value of another function that validated its return. */
 static inline uint32_t lpCurrentEncodedSizeUnsafe(unsigned char *p) {
     if (LP_ENCODING_IS_7BIT_UINT(p[0])) return 1;
-    if (LP_ENCODING_IS_6BIT_STR(p[0])) return 1+LP_ENCODING_6BIT_STR_LEN(p);
+    if (LP_ENCODING_IS_6BIT_STR(p[0])) return 1+LP_ENCODING_6BIT_STR_LEN(p); // 字符串长度，没有包含结尾的0xFF
     if (LP_ENCODING_IS_13BIT_INT(p[0])) return 2;
     if (LP_ENCODING_IS_16BIT_INT(p[0])) return 3;
     if (LP_ENCODING_IS_24BIT_INT(p[0])) return 4;
     if (LP_ENCODING_IS_32BIT_INT(p[0])) return 5;
     if (LP_ENCODING_IS_64BIT_INT(p[0])) return 9;
-    if (LP_ENCODING_IS_12BIT_STR(p[0])) return 2+LP_ENCODING_12BIT_STR_LEN(p);
+    if (LP_ENCODING_IS_12BIT_STR(p[0])) return 2+LP_ENCODING_12BIT_STR_LEN(p); //  4bit标识 + 12bit长度 + 字符串长度，没有包含结尾的0xFF
     if (LP_ENCODING_IS_32BIT_STR(p[0])) return 5+LP_ENCODING_32BIT_STR_LEN(p);
     if (p[0] == LP_EOF) return 1;
     return 0;
@@ -780,9 +782,17 @@ unsigned char *lpFind(unsigned char *lp, unsigned char *p, unsigned char *s,
  * For deletion operations (both 'elestr' and 'eleint' set to NULL) 'newp' is
  * set to the next element, on the right of the deleted one, or to NULL if the
  * deleted element was the last one. */
+// lp：listpack结构
+// elestr：插入的数据，如果是插入字符串
+// eleint：插入的数据，如果是数字
+// size：插入数据的长度
+// p：这是一个指向某个元素的指针，由lpFirst(), lpLast(), lpNext(), lpPrev() or lpSeek()得到
+// where：在p元素前插入（lp_before）、后插入(lp_after)、替换(lp_replace)
+// newp：新插入的指针以后，这个元素的指针下标
 unsigned char *lpInsert(unsigned char *lp, unsigned char *elestr, unsigned char *eleint,
                         uint32_t size, unsigned char *p, int where, unsigned char **newp)
 {
+    /** 第一字节存储类型，根据类型后面存储实际数字 */
     unsigned char intenc[LP_MAX_INT_ENCODING_LEN];
     unsigned char backlen[LP_MAX_BACKLEN_SIZE];
 
@@ -818,6 +828,8 @@ unsigned char *lpInsert(unsigned char *lp, unsigned char *elestr, unsigned char 
         *
         * Whatever the returned encoding is, 'enclen' is populated with the
         * length of the encoded element. */
+        //intenc 是数字型内容的存储空间的长度，enclen是字符型内容占用存储空间的长度
+        //尝试把字符转换成数字保存
         enctype = lpEncodeGetType(elestr,size,intenc,&enclen);
         if (enctype == LP_ENCODING_INT) eleint = intenc;
     } else if (eleint) {
