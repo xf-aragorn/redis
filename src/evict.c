@@ -317,8 +317,11 @@ uint8_t LFULogIncr(uint8_t counter) {
  * to fit: as we check for the candidate, we incrementally decrement the
  * counter of the scanned objects if needed. */
 unsigned long LFUDecrAndReturn(robj *o) {
+    //取前16bit
     unsigned long ldt = o->lru >> 8;
+    //取后8bit
     unsigned long counter = o->lru & 255;
+    //server.lfu_decay_time：衰减系统，默认1，设为0表示不衰减。
     unsigned long num_periods = server.lfu_decay_time ? LFUTimeElapsed(ldt) / server.lfu_decay_time : 0;
     if (num_periods)
         counter = (num_periods > counter) ? 0 : counter - num_periods;
